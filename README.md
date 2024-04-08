@@ -1,3 +1,14 @@
+# Installation procedure using poetry
+```
+poetry install
+poetry shell
+```
+
+pytorch3D always needs special installation
+```
+pip install --extra-index-url https://miropsota.github.io/torch_packages_builder <your package list>
+```
+
 # Paint-it (CVPR 2024)
 ### [Project Page](https://kim-youwang.github.io/paint-it) | [Paper](https://arxiv.org/abs/2312.11360)
 This repository contains the official implementation of the CVPR 2024 paper, 
