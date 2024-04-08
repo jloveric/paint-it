@@ -31,6 +31,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # model
+    parser.add_argument('--obj_path', type=str, default=0)  # weight decay
     parser.add_argument('--decay', type=float, default=0)  # weight decay
     parser.add_argument('--lr_decay', type=float, default=0.9)
     parser.add_argument('--lr_plateau', action='store_true')
@@ -131,7 +132,7 @@ def main(args, guidance):
         (f"a DSLR photo of {args.identity}", "best quality, high quality, extremely detailed, good geometry"))
 
     # load obj and read uv information
-    args.obj_path = os.path.join(OBJAVERSE_PATH, args.objaverse_id, 'mesh.obj')
+    #args.obj_path = os.path.join(OBJAVERSE_PATH, args.objaverse_id, 'mesh.obj')
     obj_f_uv, obj_v_uv, obj_f, obj_v = load_obj_uv(obj_path=args.obj_path, device=device)
 
     # initialize template mesh

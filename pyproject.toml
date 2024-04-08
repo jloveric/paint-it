@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "paint-it"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "^2.2.2"
+torchvision = "^0.17.2"
+torchaudio = "^2.2.2"
+fvcore = "^0.1.5.post20221221"
+iopath = "^0.1.10"
+nvdiffrast = {git = "https://github.com/NVlabs/nvdiffrast/"}
+diffusers = "^0.27.2"
+huggingface-hub = "^0.22.2"
+transformers = "^4.39.2"
+sentence-transformers = "^2.6.1"
+pip = "^24.0"
+numpy = "^1.26.4"
+imageio = "^2.34.0"
+matplotlib = "^3.8.4"
+wheel = "^0.43.0"
+chumpy = {path = "chumpy"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

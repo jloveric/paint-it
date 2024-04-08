@@ -8,6 +8,17 @@ pytorch3D always needs special installation
 ```
 pip install --extra-index-url https://miropsota.github.io/torch_packages_builder <your package list>
 ```
+chumpy will fail to install with poetry and pip, but there is a work around until the problem is fixed. See
+https://github.com/mattloper/chumpy/issues/56
+you'll then need to run
+```
+poetry add ./chumpy
+```
+Run with command
+```
+python3 paint_it.py --obj_path=<path to obj file>
+```
+
 
 # Paint-it (CVPR 2024)
 ### [Project Page](https://kim-youwang.github.io/paint-it) | [Paper](https://arxiv.org/abs/2312.11360)
