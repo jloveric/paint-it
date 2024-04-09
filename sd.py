@@ -124,6 +124,21 @@ class StableDiffusion(nn.Module):
         t = torch.randint(min_step, max_step + 1, [1], dtype=torch.long, device=self.device).repeat(B)
 
         # predict the noise residual with unet, NO grad!
+        """
+        with torch.no_grad():
+            # add noise
+            noise = torch.randn_like(latents)
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
+            print('latents_noisy.shape', latents_noisy.shape)
+            # pred noise
+            latent_model_input = torch.cat([latents_noisy] * 2)
+            tt = torch.cat([t] * 2)
+            print('tt', tt.shape)
+            print('latent_model_input.shape', latent_model_input.shape)
+            print('text_embeddigns.shape', text_embeddings.shape)
+            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+        """
+
         with torch.no_grad():
             # add noise
             noise = torch.randn_like(latents)
@@ -131,7 +146,16 @@ class StableDiffusion(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
-            noise_pred = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings).sample
+            
+            size = latent_model_input.shape[0]
+            batch_size = 2
+
+            res = []
+            for start in range(0, size, batch_size) :
+                end=start+batch_size
+                res.append(self.unet(latent_model_input[start:end], tt[start:end], encoder_hidden_states=text_embeddings[start:end]).sample)
+            
+            noise_pred = torch.cat(res)
 
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
