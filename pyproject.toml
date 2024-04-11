@@ -24,6 +24,8 @@ imageio = "^2.34.0"
 matplotlib = "^3.8.4"
 wheel = "^0.43.0"
 chumpy = {path = "chumpy"}
+xatlas = "^0.0.9"
+lion-pytorch = "^0.1.4"
 
 
 [build-system]

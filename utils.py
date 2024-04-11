@@ -15,6 +15,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def sample_view_obj(n_view, cam_radius, res=[512, 512], cam_near_far=[0.1, 1000.0], spp=1, is_face=False):
+    """
+    These ones are used in the network. Setting res=[1024,1024] results in OOM for me
+    """
+    
     iter_res = res
     fovy = np.deg2rad(45)
     proj_mtx = util.perspective(fovy, iter_res[1] / iter_res[0], cam_near_far[0], cam_near_far[1])
@@ -151,6 +155,7 @@ from pytorch3d.io import load_obj, save_obj
 def load_obj_uv(obj_path, device):
     vert, face, aux = load_obj(obj_path, device=device)
     vt = aux.verts_uvs
+    print('uv mesh verts', vt, vt.shape)
     ft = face.textures_idx
     vt = torch.cat((vt[:, [0]], 1.0 - vt[:, [1]]), dim=1)
     return ft, vt, face.verts_idx, vert

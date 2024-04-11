@@ -10,6 +10,8 @@ import copy
 import argparse
 import torch.nn.functional as F
 import warnings
+import xatlas
+from lion_pytorch import Lion
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.simplefilter("ignore", FutureWarning)
@@ -27,15 +29,21 @@ glctx = dr.RasterizeCudaContext()
 OBJAVERSE_PATH = './data'
 
 
+TEX_SIZE=512
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
     # model
+    parser.add_argument('--prompt', type=str, default="building")
+    parser.add_argument('--obj_id', type=str, default='id')
     parser.add_argument('--obj_path', type=str, default=0)  # weight decay
     parser.add_argument('--decay', type=float, default=0)  # weight decay
     parser.add_argument('--lr_decay', type=float, default=0.9)
     parser.add_argument('--lr_plateau', action='store_true')
     parser.add_argument('--decay_step', type=int, default=100)
+    parser.add_argument('--sd_version', type=str, default="realarch")
+    parser.add_argument('--optimizer',type=str, default='lion')
 
     # training
     parser.add_argument('--sd_max_grad_norm', type=float, default=10.0)
@@ -93,7 +101,18 @@ def get_model(args):
     for p in lgt.parameters():
         p.requires_grad = False
 
-    optim = torch.optim.Adam(params, args.learning_rate, weight_decay=args.decay)
+    if args.optimizer=='lion':
+        optim = Lion(
+            params,
+            lr=args.learning_rate/3.0, # Lucid rains recommends 1/3 learning rate for lion
+            weight_decay=args.decay,
+            use_triton=False 
+        )
+    elif args.optimizer=='adam':
+        optim = torch.optim.Adam(params, args.learning_rate, weight_decay=args.decay)
+    else :
+        raise ValueError(f'Optimizer {args.optimizer} not recognized')
+    
     activate_scheduler = args.lr_decay < 1 and args.decay_step > 0 and not args.lr_plateau
     if activate_scheduler:
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.decay_step, gamma=args.lr_decay)
@@ -122,14 +141,14 @@ def compute_sd_step(min, max, iter_frac):
 
 
 def main(args, guidance):
-    exp_name = time.strftime('%Y%m%d', time.localtime()) + '_' + args.exp_name
+    exp_name = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '_' + args.exp_name
     output_dir = os.path.join('./logs', exp_name)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     # seed_all(args)
 
     # Get text prompt and tokenize it
     sd_prompt = ", ".join(
-        (f"a DSLR photo of {args.identity}", "best quality, high quality, extremely detailed, good geometry"))
+        (f"{args.identity}", "best quality, high quality, extremely detailed, good geometry"))
 
     # load obj and read uv information
     #args.obj_path = os.path.join(OBJAVERSE_PATH, args.objaverse_id, 'mesh.obj')
@@ -141,7 +160,8 @@ def main(args, guidance):
     mesh_t = auto_normals(mesh_t)
     mesh_t = compute_tangents(mesh_t)
 
-    input_uv_ = torch.randn((3, 512, 512), device=device)
+    uv_size = TEX_SIZE
+    input_uv_ = torch.randn((3, TEX_SIZE, TEX_SIZE), device=device)
 
     # scale input
     input_uv = (input_uv_ - torch.mean(input_uv_, dim=(1, 2)).reshape(-1, 1, 1)) / torch.std(input_uv_, dim=(1, 2)).reshape(-1, 1, 1)
@@ -152,7 +172,7 @@ def main(args, guidance):
     net, lgt, optim, activate_scheduler, lr_scheduler = get_model(args)
 
     # get text embedding
-    neg_prompt = 'deformed, extra digit, fewer digits, cropped, worst quality, low quality, smoke'
+    neg_prompt = 'cropped, worst quality, low quality'
     text_z = []
 
     for d in ['front', 'side', 'back', 'overhead']:
@@ -163,7 +183,7 @@ def main(args, guidance):
     kd_min, kd_max = torch.tensor(args.kd_min, dtype=torch.float32, device='cuda'), torch.tensor(args.kd_max, dtype=torch.float32, device='cuda')
     ks_min, ks_max = torch.tensor(args.ks_min, dtype=torch.float32, device='cuda'), torch.tensor(args.ks_max, dtype=torch.float32, device='cuda')
     nrm_min, nrm_max = torch.tensor(args.nrm_min, dtype=torch.float32, device='cuda'), torch.tensor(args.nrm_max, dtype=torch.float32, device='cuda')
-    nrm_t = get_template_normal()  # (512, 512, 3)
+    nrm_t = get_template_normal(TEX_SIZE,TEX_SIZE)  # (512, 512, 3)
 
     # Main training loop
     for step in tqdm(range(args.n_iter + 1)):
@@ -174,8 +194,9 @@ def main(args, guidance):
         lgt.build_mips()
         with torch.no_grad():
             mesh = copy.deepcopy(mesh_t)
-
+        #print('network_inputs.shape', network_input.shape)
         net_output = net(network_input)  # [B, 9, H, W]
+        #print('outputs.shape', net_output.shape)
         pred_tex = net_output.permute(0, 2, 3, 1)
         pred_kd = pred_tex[..., :-6]
         pred_ks = pred_tex[..., -6:-3]
@@ -198,6 +219,8 @@ def main(args, guidance):
                               spp=cam['spp'], msaa=True, background=None, bsdf='pbr')
         pred_obj_rgb = buffers['shaded'][..., 0:3].permute(0, 3, 1, 2).contiguous()
         pred_obj_ws = buffers['shaded'][..., 3].unsqueeze(1)  # [B, 1, H, W]
+        
+        # Rendered images I believe
         obj_image = pred_obj_rgb * pred_obj_ws + (1 - pred_obj_ws) * args.bg  # white bg
 
         # SDS losses
@@ -292,19 +315,17 @@ def main(args, guidance):
 if __name__ == '__main__':
     args = parse_args()
 
-    mesh_dicts = {
-        '9ce8ab24383c4c93b4c1c7c3848abc52': 'a pretzel',
-    }
-
     # load stable-diffusion model
-    guidance = StableDiffusion(device, min=args.sd_min, max=args.sd_max)
+    guidance = StableDiffusion(device, sd_version=args.sd_version, min=args.sd_min, max=args.sd_max)
     guidance.eval()
     for p in guidance.parameters():
         p.requires_grad = False
 
     # iterate through the renderpeople items
-    for obj_id, caption in mesh_dicts.items():
-        args.exp_name = '_'.join((caption.split(' ')[1:] + [obj_id[:6]]))
-        args.objaverse_id = obj_id
-        args.identity = caption
-        main(args, guidance)
+    #for obj_id, caption in mesh_dicts.items():
+    caption = args.prompt
+    obj_id = args.obj_id
+    args.exp_name = '_'.join((caption.split(' ')[1:] + [obj_id[:6]]))+'_'+str(args.seed)+'_'+str(args.sd_version)
+    args.objaverse_id = obj_id
+    args.identity = caption
+    main(args, guidance)

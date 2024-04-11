@@ -52,9 +52,12 @@ class StableDiffusion(nn.Module):
             model_key = "stabilityai/stable-diffusion-2-base"
         elif self.sd_version == '1.5':
             model_key = "runwayml/stable-diffusion-v1-5"
+        elif self.sd_version =='realarch':
+             model_key = "/home/john/huggingface/civitai-conversions/architecturerealmix_v1repair"
         else:
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
 
+       
         # Create model
         self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
@@ -153,7 +156,18 @@ class StableDiffusion(nn.Module):
             res = []
             for start in range(0, size, batch_size) :
                 end=start+batch_size
-                res.append(self.unet(latent_model_input[start:end], tt[start:end], encoder_hidden_states=text_embeddings[start:end]).sample)
+
+                lmi = latent_model_input[start:end]
+                tti = tt[start:end]
+                tei = text_embeddings[start:end]
+                if start-end == 1 :
+                    # The tensor will change dimensions if there is only 1 dimension so we need to fix that
+                    lmi.unsqueeze(0)
+                    tti.unsqueeze(0)
+                    tei.unsqueeze(0)
+
+                # SD Unit if I understand correctly, but pass the latent predicted by the renderer?
+                res.append(self.unet(lmi, tti, encoder_hidden_states=tei).sample)
             
             noise_pred = torch.cat(res)
 
@@ -163,6 +177,8 @@ class StableDiffusion(nn.Module):
 
         # w(t), sigma_t^2
         w = (1 - self.alphas[t])
+
+        # compare the actual noise to the predicted noise
         grad = w.view(-1, 1, 1, 1) * (noise_pred - noise)
 
         # clip grad for stable training?
@@ -284,7 +300,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--prompt', default='', type=str)
     parser.add_argument('--negative', default='', type=str)
-    parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'],
+    parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1','realarch'],
                         help="stable diffusion version")
     parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
     parser.add_argument('-H', type=int, default=512)
